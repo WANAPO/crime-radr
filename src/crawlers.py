@@ -33,16 +33,9 @@ SOURCE_FEEDS: list[tuple[str, str]] = [
 ]
 
 DIRECT_TARGET_PAGES: list[tuple[str, str]] = [
-    ("sabc_news", "https://www.sabcnews.com/sabcnews/category/south-africa/crime-courts/"),
     ("sabc_news", "https://www.sabcnews.com/sabcnews/"),
-    ("ecr_news_traffic", "https://www.ecr.co.za/news/news/"),
-    ("ecr_news_traffic", "https://www.ecr.co.za/traffic/"),
-    ("north_coast_courier", "https://www.northcoastcourier.co.za/news-category/crime/"),
     ("north_coast_courier", "https://www.northcoastcourier.co.za/"),
-    ("phoenix_tabloid", "https://phoenixtabloid.co.za/category/news/"),
     ("phoenix_tabloid", "https://phoenixtabloid.co.za/"),
-    ("pretoria_news", "https://iol.co.za/pretoria-news/"),
-    ("iol_news", "https://iol.co.za/news/crime-and-courts/"),
     ("arrive_alive", "https://www.arrivealive.co.za/"),
 ]
 
