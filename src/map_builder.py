@@ -359,7 +359,50 @@ def generate_map() -> Path:
             color: #d4d4d8;
             font-weight: 800;
         }}
-    </style>
+    
+@media (max-width: 767px) {
+  .leaflet-top.leaflet-left { top: 6px; left: 6px; }
+  .leaflet-top.leaflet-right { top: auto; bottom: 54px; right: 6px; }
+  .leaflet-bottom.leaflet-left { bottom: 48px; left: 6px; }
+  .leaflet-control-layers {
+    max-width: 195px !important;
+    font-size: 11px !important;
+    padding: 4px 6px !important;
+  }
+  .leaflet-control-layers-expanded label {
+    padding: 3px 0 !important;
+  }
+  .cr-hud {
+    top: 6px !important;
+    left: 46px !important;
+    right: 6px !important;
+    max-width: none !important;
+    padding: 8px 10px !important;
+  }
+  .cr-title { font-size: 20px !important; }
+  .cr-subtitle { font-size: 11px !important; margin-top: 2px !important; }
+  .cr-stats {
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    margin-top: 6px !important;
+    padding-top: 6px !important;
+    font-size: 11px !important;
+  }
+  .cr-bottom-bar {
+    bottom: 8px !important;
+    gap: 10px !important;
+    padding: 5px 10px !important;
+    font-size: 12px !important;
+    white-space: nowrap !important;
+  }
+}
+@media (min-width: 768px) and (max-width: 1024px) {
+  .cr-hud { max-width: 340px !important; padding: 10px 14px !important; }
+  .cr-title { font-size: 24px !important; }
+  .cr-subtitle { font-size: 12px !important; }
+  .cr-stats { font-size: 12px !important; gap: 10px !important; }
+}
+</style>
     <div class="cr-hud">
         <div class="cr-title">CRIME RADR</div>
         <div class="cr-subtitle">
