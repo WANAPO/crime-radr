@@ -12,24 +12,64 @@ PROVINCES_GEOJSON_URL = (
     "https://raw.githubusercontent.com/codeforgermany/click_that_hood/main/public/data/south-africa.geojson"
 )
 
+DRUG_CAR_SVG = """
+<svg width="26" height="22" viewBox="0 0 36 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Tiny car silhouette -->
+  <path d="M5 17L8 10.5C8.5 9.5 9.5 9 10.6 9H18.4C19.5 9 20.5 9.5 21 10.5L24 17H26.5C27.9 17 29 18.1 29 19.5V22H26.8C26.4 20.3 24.9 19 23.1 19C21.3 19 19.8 20.3 19.4 22H12.6C12.2 20.3 10.7 19 8.9 19C7.1 19 5.6 20.3 5.2 22H3V19.5C3 18.1 3.9 17 5 17Z" fill="#ffffff" stroke="#111827" stroke-width="1.3"/>
+  <circle cx="8.9" cy="22" r="2.2" fill="#dc2626" stroke="#111827" stroke-width="1.2"/>
+  <circle cx="23.1" cy="22" r="2.2" fill="#dc2626" stroke="#111827" stroke-width="1.2"/>
+  <!-- Drug capsule badge -->
+  <g transform="translate(19, 1) rotate(28)">
+    <rect x="0" y="0" width="14" height="7.5" rx="3.75" fill="#ffffff" stroke="#111827" stroke-width="1.2"/>
+    <path d="M7 0.6H10.25C12.1 0.6 13.4 2 13.4 3.75C13.4 5.5 12.1 6.9 10.25 6.9H7V0.6Z" fill="#a855f7"/>
+  </g>
+</svg>
+"""
+
+TINY_UBERCARD_SVG = """
+<svg width="24" height="22" viewBox="0 0 32 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Compact / tiny city car ("Ubercar") -->
+  <path d="M7.5 16.5L10.2 8.5C10.6 7.4 11.6 6.8 12.8 6.8H19.2C20.4 6.8 21.4 7.4 21.8 8.5L24.5 16.5H26.2C27.5 16.5 28.5 17.5 28.5 18.8V20.5H26.4C26 18.8 24.5 17.6 22.8 17.6C21.1 17.6 19.6 18.8 19.2 20.5H12.8C12.4 18.8 10.9 17.6 9.2 17.6C7.5 17.6 6 18.8 5.6 20.5H3.5V18.8C3.5 17.5 4.5 16.5 5.8 16.5H7.5Z" fill="#ffffff" stroke="#111827" stroke-width="1.3"/>
+  <path d="M11.2 15.5L12.8 9.2H19.2L20.8 15.5H11.2Z" fill="#3f3f46"/>
+  <circle cx="9.2" cy="20.5" r="2.2" fill="#f59e0b" stroke="#111827" stroke-width="1.2"/>
+  <circle cx="22.8" cy="20.5" r="2.2" fill="#f59e0b" stroke="#111827" stroke-width="1.2"/>
+</svg>
+"""
+
+CIT_CASH_TRUCK_SVG = """
+<svg width="30" height="24" viewBox="0 0 40 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Armoured CIT / money truck body -->
+  <rect x="11" y="7" width="16" height="13" rx="1.8" fill="#ffffff" stroke="#111827" stroke-width="1.3"/>
+  <path d="M27 11H32.5L35.5 15V20H27V11Z" fill="#e4e4e7" stroke="#111827" stroke-width="1.3"/>
+  <rect x="28.8" y="12.5" width="4.2" height="3.2" rx="0.6" fill="#3f3f46"/>
+  <!-- Cash pouring out from rear -->
+  <rect x="2" y="8" width="6.5" height="3.6" rx="0.7" transform="rotate(-18 2 8)" fill="#22c55e" stroke="#111827" stroke-width="1"/>
+  <rect x="1" y="13.2" width="6.5" height="3.6" rx="0.7" transform="rotate(14 1 13.2)" fill="#4ade80" stroke="#111827" stroke-width="1"/>
+  <rect x="4.5" y="17.5" width="6" height="3.4" rx="0.7" transform="rotate(-10 4.5 17.5)" fill="#16a34a" stroke="#111827" stroke-width="1"/>
+  <!-- Wheels -->
+  <circle cx="15.5" cy="21" r="2.5" fill="#ef4444" stroke="#111827" stroke-width="1.2"/>
+  <circle cx="31.5" cy="21" r="2.5" fill="#ef4444" stroke="#111827" stroke-width="1.2"/>
+</svg>
+"""
+
 CATEGORY_META = {
     "drug_bust": {
         "label": "Major Drug Busts & Labs",
-        "color": "purple",
+        "color": "#a855f7",
         "badge_bg": "#dc2626",
-        "icon": "exclamation-sign",
+        "svg": DRUG_CAR_SVG,
     },
     "hijacking": {
         "label": "Hijackings & Stolen Vehicles",
-        "color": "orange",
+        "color": "#f59e0b",
         "badge_bg": "#b91c1c",
-        "icon": "road",
+        "svg": TINY_UBERCARD_SVG,
     },
     "cit_robbery": {
         "label": "CIT Heists & Money Trucks",
-        "color": "red",
+        "color": "#ef4444",
         "badge_bg": "#991b1b",
-        "icon": "fire",
+        "svg": CIT_CASH_TRUCK_SVG,
     },
 }
 
@@ -107,6 +147,33 @@ def build_popup_html(incident: dict) -> str:
     """
 
 
+def build_custom_marker_icon(category: str) -> folium.DivIcon:
+    meta = CATEGORY_META[category]
+    border_col = meta["color"]
+    svg_markup = meta["svg"]
+    return folium.DivIcon(
+        html=f"""
+        <div style="
+            width: 34px;
+            height: 30px;
+            margin-left: -17px;
+            margin-top: -15px;
+            background: rgba(24, 24, 27, 0.95);
+            border: 2px solid {border_col};
+            border-radius: 7px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.65);
+        ">
+            {svg_markup}
+        </div>
+        """,
+        icon_size=(34, 30),
+        icon_anchor=(17, 15),
+    )
+
+
 def generate_map() -> Path:
     init_db()
     incidents = fetch_all_incidents()
@@ -118,7 +185,6 @@ def generate_map() -> Path:
         control_scale=True,
     )
 
-    # Grey & light-grey tactical line basemap (zero API keys, works over file:// and http://)
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
         attr="Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ",
@@ -134,7 +200,6 @@ def generate_map() -> Path:
         control=False,
     ).add_to(sa_map)
 
-    # Light-grey lines for national & provincial boundaries over grey landmass
     provinces_geojson = ensure_sa_provinces_geojson()
     if provinces_geojson:
         folium.GeoJson(
@@ -186,7 +251,7 @@ def generate_map() -> Path:
             location=[inc["latitude"], inc["longitude"]],
             popup=popup,
             tooltip=tooltip,
-            icon=folium.Icon(color=meta["color"], icon=meta["icon"], prefix="glyphicon"),
+            icon=build_custom_marker_icon(cat),
         ).add_to(layers[cat])
 
     folium.LayerControl(collapsed=False).add_to(sa_map)
@@ -197,7 +262,6 @@ def generate_map() -> Path:
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet">
     <style>
-        /* Grey & light-grey line map tuning */
         .leaflet-tile-pane {{
             filter: grayscale(100%) brightness(1.08) contrast(1.12);
         }}
