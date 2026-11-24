@@ -174,33 +174,6 @@ def build_popup_html(incident: dict) -> str:
     """
 
 
-def build_custom_marker_icon(category: str) -> folium.DivIcon:
-    meta = CATEGORY_META[category]
-    border_col = meta["color"]
-    svg_markup = meta["svg"]
-    return folium.DivIcon(
-        html=f"""
-        <div style="
-            width: 34px;
-            height: 30px;
-            margin-left: -17px;
-            margin-top: -15px;
-            background: rgba(20, 20, 22, 0.95);
-            border: 1.5px solid {border_col};
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.65);
-        ">
-            {svg_markup}
-        </div>
-        """,
-        icon_size=(34, 30),
-        icon_anchor=(17, 15),
-    )
-
-
 def generate_map() -> Path:
     init_db()
     incidents = fetch_all_incidents()
@@ -212,7 +185,6 @@ def generate_map() -> Path:
         control_scale=True,
     )
 
-    # Include Leaflet.markercluster CSS & JS for dense hub grouping (Gauteng & KZN)
     cluster_assets = folium.Element("""
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" />
@@ -256,7 +228,7 @@ def generate_map() -> Path:
             },
             tooltip=folium.GeoJsonTooltip(
                 fields=["name"],
-                aliases=["PROVINCE:"],
+                aliases=["REGION:"],
                 sticky=False,
                 style=(
                     "background-color: #141416; color: #ffffff; "
@@ -270,9 +242,15 @@ def generate_map() -> Path:
     records_for_js: list[dict] = []
 
     for inc in incidents:
-        cat = inc["category"]
+        cat = inc.get("category")
         if cat not in CATEGORY_META:
             continue
+        try:
+            lat = float(inc["latitude"])
+            lon = float(inc["longitude"])
+        except (KeyError, TypeError, ValueError):
+            continue
+
         counts[cat] += 1
         details_copy = dict(inc.get("details", {}))
         source_outlet = details_copy.get("source", "SA Press")
@@ -284,8 +262,8 @@ def generate_map() -> Path:
                 "summary": _clean_display_summary(inc.get("title", ""), inc.get("summary", "")),
                 "location_name": inc.get("location_name", ""),
                 "province": inc.get("province", "South Africa"),
-                "latitude": inc["latitude"],
-                "longitude": inc["longitude"],
+                "latitude": lat,
+                "longitude": lon,
                 "reported_at": inc.get("reported_at", ""),
                 "source_url": inc.get("source_url", ""),
                 "source": source_outlet,
@@ -297,7 +275,7 @@ def generate_map() -> Path:
 
     map_var = sa_map.get_name()
     updated_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    records_json = json.dumps(records_for_js, ensure_ascii=False)
+    records_json = json.dumps(records_for_js, ensure_ascii=False).replace("</", "<\\/")
     meta_json = json.dumps(
         {
             k: {
@@ -309,7 +287,7 @@ def generate_map() -> Path:
             for k, v in CATEGORY_META.items()
         },
         ensure_ascii=False,
-    )
+    ).replace("</", "<\\/")
 
     ui_html = f"""
     <style>
@@ -608,127 +586,147 @@ def generate_map() -> Path:
             <span>@wanapo</span>
         </a>
     </div>
-
+    """ + f"""
     <script>
     (function() {{
-        const INCIDENTS = {records_json};
-        const META = {meta_json};
-        const mapObj = {map_var};
+        try {{
+            const INCIDENTS = {records_json};
+            const META = {meta_json};
+            const mapObj = {map_var};
 
-        const clusterGroup = L.markerClusterGroup({{
-            maxClusterRadius: 42,
-            spiderfyOnMaxZoom: true,
-            showCoverageOnHover: false,
-            iconCreateFunction: function(cluster) {{
-                const count = cluster.getChildCount();
-                const size = count >= 25 ? 40 : count >= 10 ? 35 : 30;
+            const clusterGroup = L.markerClusterGroup({{
+                maxClusterRadius: 42,
+                spiderfyOnMaxZoom: true,
+                showCoverageOnHover: false,
+                iconCreateFunction: function(cluster) {{
+                    const count = cluster.getChildCount();
+                    const size = count >= 25 ? 40 : count >= 10 ? 35 : 30;
+                    return L.divIcon({{
+                        html: '<div class="cr-cluster-badge" style="width:' + size + 'px;height:' + size + 'px;">' + count + '</div>',
+                        className: '',
+                        iconSize: [size, size],
+                        iconAnchor: [size / 2, size / 2]
+                    }});
+                }}
+            }});
+            mapObj.addLayer(clusterGroup);
+
+            function makeIcon(cat) {{
+                const m = META[cat] || META.cit_robbery;
                 return L.divIcon({{
-                    html: '<div class="cr-cluster-badge" style="width:' + size + 'px;height:' + size + 'px;">' + count + '</div>',
+                    html: '<div style="width:34px;height:30px;margin-left:-17px;margin-top:-15px;background:rgba(20,20,22,0.95);border:1.5px solid ' + m.color + ';border-radius:4px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.65);">' + m.svg + '</div>',
                     className: '',
-                    iconSize: [size, size],
-                    iconAnchor: [size / 2, size / 2]
+                    iconSize: [34, 30],
+                    iconAnchor: [17, 15]
                 }});
             }}
-        }});
-        mapObj.addLayer(clusterGroup);
 
-        function makeIcon(cat) {{
-            const m = META[cat] || META.cit_robbery;
-            return L.divIcon({{
-                html: '<div style="width:34px;height:30px;margin-left:-17px;margin-top:-15px;background:rgba(20,20,22,0.95);border:1.5px solid ' + m.color + ';border-radius:4px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.65);">' + m.svg + '</div>',
-                className: '',
-                iconSize: [34, 30],
-                iconAnchor: [17, 15]
+            function normalizeProv(p) {{
+                const s = (p || "").toLowerCase().trim();
+                if (s === "kzn" || s.includes("kwazulu")) return "KwaZulu-Natal";
+                if (s.includes("gauteng")) return "Gauteng";
+                if (s.includes("western cape")) return "Western Cape";
+                if (s.includes("eastern cape")) return "Eastern Cape";
+                if (s.includes("free state")) return "Free State";
+                if (s.includes("limpopo")) return "Limpopo";
+                if (s.includes("mpumalanga")) return "Mpumalanga";
+                if (s.includes("north west")) return "North West";
+                if (s.includes("northern cape")) return "Northern Cape";
+                return p || "South Africa";
+            }}
+
+            function withinWindow(dateStr, days) {{
+                if (days === "ALL" || !dateStr) return true;
+                const parsed = Date.parse(dateStr + "T00:00:00Z");
+                if (Number.isNaN(parsed)) return true;
+                const cutoff = Date.now() - (parseInt(days, 10) * 86400000);
+                return parsed >= cutoff;
+            }}
+
+            function renderFiltered() {{
+                const q = (document.getElementById("cr-search").value || "").trim().toLowerCase();
+                const prov = document.getElementById("cr-province").value;
+                const win = document.getElementById("cr-window").value;
+                const activeCats = new Set(
+                    Array.from(document.querySelectorAll(".cr-cat-cb:checked")).map(cb => cb.value)
+                );
+
+                const filtered = INCIDENTS.filter(item => {{
+                    if (!activeCats.has(item.category)) return false;
+                    const itemProv = normalizeProv(item.province);
+                    if (prov !== "ALL" && itemProv !== prov) return false;
+                    if (!withinWindow(item.reported_at, win)) return false;
+                    if (q) {{
+                        const hay = [item.title, item.summary, item.location_name, itemProv, item.source, item.reported_at]
+                            .join(" ").toLowerCase();
+                        if (!hay.includes(q)) return false;
+                    }}
+                    return true;
+                }});
+
+                clusterGroup.clearLayers();
+                const newMarkers = [];
+                const catCounts = {{ drug_bust: 0, hijacking: 0, cit_robbery: 0 }};
+                const provCounts = {{}};
+                let recent7d = 0;
+
+                filtered.forEach(item => {{
+                    if (typeof item.latitude !== "number" || typeof item.longitude !== "number") return;
+                    const itemProv = normalizeProv(item.province);
+                    catCounts[item.category] = (catCounts[item.category] || 0) + 1;
+                    provCounts[itemProv] = (provCounts[itemProv] || 0) + 1;
+                    if (withinWindow(item.reported_at, "7")) recent7d += 1;
+
+                    const marker = L.marker([item.latitude, item.longitude], {{ icon: makeIcon(item.category) }});
+                    marker.bindPopup(item.popup_html, {{ maxWidth: 290 }});
+                    marker.bindTooltip(item.tooltip);
+                    newMarkers.push(marker);
+                }});
+
+                clusterGroup.addLayers(newMarkers);
+
+                document.getElementById("cr-hud-counts").innerHTML =
+                    '<span><strong style="color:#ef4444;">' + catCounts.drug_bust + '</strong> Drug Busts</span>' +
+                    '<span><strong style="color:#ef4444;">' + catCounts.hijacking + '</strong> Hijackings</span>' +
+                    '<span><strong style="color:#ef4444;">' + catCounts.cit_robbery + '</strong> CIT Heists</span>';
+
+                document.getElementById("cr-visible-badge").textContent = filtered.length + " shown";
+
+                const sortedProvs = Object.entries(provCounts).sort((a, b) => b[1] - a[1]);
+                const provHtml = sortedProvs.length
+                    ? sortedProvs.map(([p, c]) => '<div class="cr-prov-row"><span>' + p + '</span><strong>' + c + '</strong></div>').join("")
+                    : '<div style="color:#a1a1aa;">No matching incidents</div>';
+
+                document.getElementById("cr-drawer-body").innerHTML =
+                    '<div style="margin-bottom:6px; color:#fca5a5; font-weight:700;">Last 7 Days in View: ' + recent7d + '</div>' +
+                    provHtml;
+            }}
+
+            document.getElementById("cr-search").addEventListener("input", renderFiltered);
+            document.getElementById("cr-province").addEventListener("change", renderFiltered);
+            document.getElementById("cr-window").addEventListener("change", renderFiltered);
+            document.querySelectorAll(".cr-cat-cb").forEach(cb => cb.addEventListener("change", renderFiltered));
+
+            document.getElementById("cr-reset-btn").addEventListener("click", function() {{
+                document.getElementById("cr-search").value = "";
+                document.getElementById("cr-province").value = "ALL";
+                document.getElementById("cr-window").value = "ALL";
+                document.querySelectorAll(".cr-cat-cb").forEach(cb => {{ cb.checked = true; }});
+                renderFiltered();
             }});
-        }}
 
-        function withinWindow(dateStr, days) {{
-            if (days === "ALL" || !dateStr) return true;
-            const parsed = Date.parse(dateStr + "T00:00:00Z");
-            if (Number.isNaN(parsed)) return true;
-            const cutoff = Date.now() - (parseInt(days, 10) * 86400000);
-            return parsed >= cutoff;
-        }}
-
-        function renderFiltered() {{
-            const q = (document.getElementById("cr-search").value || "").trim().toLowerCase();
-            const prov = document.getElementById("cr-province").value;
-            const win = document.getElementById("cr-window").value;
-            const activeCats = new Set(
-                Array.from(document.querySelectorAll(".cr-cat-cb:checked")).map(cb => cb.value)
-            );
-
-            const filtered = INCIDENTS.filter(item => {{
-                if (!activeCats.has(item.category)) return false;
-                if (prov !== "ALL" && item.province !== prov) return false;
-                if (!withinWindow(item.reported_at, win)) return false;
-                if (q) {{
-                    const hay = [item.title, item.summary, item.location_name, item.province, item.source, item.reported_at]
-                        .join(" ").toLowerCase();
-                    if (!hay.includes(q)) return false;
-                }}
-                return true;
+            document.getElementById("cr-drawer-toggle").addEventListener("click", function() {{
+                const body = document.getElementById("cr-drawer-body");
+                const arrow = document.getElementById("cr-drawer-arrow");
+                const hidden = body.style.display === "none";
+                body.style.display = hidden ? "block" : "none";
+                arrow.innerHTML = hidden ? "&#9660;" : "&#9650;";
             }});
 
-            clusterGroup.clearLayers();
-            const newMarkers = [];
-            const catCounts = {{ drug_bust: 0, hijacking: 0, cit_robbery: 0 }};
-            const provCounts = {{}};
-            let recent7d = 0;
-
-            filtered.forEach(item => {{
-                if (typeof item.latitude !== "number" || typeof item.longitude !== "number") return;
-                catCounts[item.category] = (catCounts[item.category] || 0) + 1;
-                provCounts[item.province] = (provCounts[item.province] || 0) + 1;
-                if (withinWindow(item.reported_at, "7")) recent7d += 1;
-
-                const marker = L.marker([item.latitude, item.longitude], {{ icon: makeIcon(item.category) }});
-                marker.bindPopup(item.popup_html, {{ maxWidth: 290 }});
-                marker.bindTooltip(item.tooltip);
-                newMarkers.push(marker);
-            }});
-
-            clusterGroup.addLayers(newMarkers);
-
-            document.getElementById("cr-hud-counts").innerHTML =
-                '<span><strong style="color:#ef4444;">' + catCounts.drug_bust + '</strong> Drug Busts</span>' +
-                '<span><strong style="color:#ef4444;">' + catCounts.hijacking + '</strong> Hijackings</span>' +
-                '<span><strong style="color:#ef4444;">' + catCounts.cit_robbery + '</strong> CIT Heists</span>';
-
-            document.getElementById("cr-visible-badge").textContent = filtered.length + " shown";
-
-            const sortedProvs = Object.entries(provCounts).sort((a, b) => b[1] - a[1]);
-            const provHtml = sortedProvs.length
-                ? sortedProvs.map(([p, c]) => '<div class="cr-prov-row"><span>' + p + '</span><strong>' + c + '</strong></div>').join("")
-                : '<div style="color:#a1a1aa;">No matching incidents</div>';
-
-            document.getElementById("cr-drawer-body").innerHTML =
-                '<div style="margin-bottom:6px; color:#fca5a5; font-weight:700;">Last 7 Days in View: ' + recent7d + '</div>' +
-                provHtml;
-        }}
-
-        document.getElementById("cr-search").addEventListener("input", renderFiltered);
-        document.getElementById("cr-province").addEventListener("change", renderFiltered);
-        document.getElementById("cr-window").addEventListener("change", renderFiltered);
-        document.querySelectorAll(".cr-cat-cb").forEach(cb => cb.addEventListener("change", renderFiltered));
-
-        document.getElementById("cr-reset-btn").addEventListener("click", function() {{
-            document.getElementById("cr-search").value = "";
-            document.getElementById("cr-province").value = "ALL";
-            document.getElementById("cr-window").value = "ALL";
-            document.querySelectorAll(".cr-cat-cb").forEach(cb => {{ cb.checked = true; }});
             renderFiltered();
-        }});
-
-        document.getElementById("cr-drawer-toggle").addEventListener("click", function() {{
-            const body = document.getElementById("cr-drawer-body");
-            const arrow = document.getElementById("cr-drawer-arrow");
-            const hidden = body.style.display === "none";
-            body.style.display = hidden ? "block" : "none";
-            arrow.innerHTML = hidden ? "&#9660;" : "&#9650;";
-        }});
-
-        renderFiltered();
+        }} catch (err) {{
+            console.error("Crime Radr UI error:", err);
+        }}
     }})();
     </script>
     """
