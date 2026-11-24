@@ -310,9 +310,15 @@ def _fetch_saps_detail(detail_url: str) -> tuple[str, list[str]]:
         soup = BeautifulSoup(resp.text, "html.parser")
 
         images: list[str] = []
+        skip_saps = ("crest", "badge", "footer", "header", "nav", "menu", "button", "flag", "gov", "search", "print", "email")
         for img in soup.find_all("img", src=True):
             src = img["src"].strip()
-            full_img = src if src.startswith("http") else f"https://www.saps.gov.za/{src.lstrip('/')}"
+            full_img = urljoin(detail_url, src)
+            low = full_img.lower()
+            if not any(ext in low for ext in (".jpg", ".jpeg", ".png", ".webp")):
+                continue
+            if any(tok in low for tok in skip_saps):
+                continue
             if _is_valid_photo_url(full_img) and full_img not in images:
                 images.append(full_img)
             if len(images) >= 3:
