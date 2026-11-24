@@ -385,6 +385,46 @@ def crawl_saps_statements(max_items: int = 30) -> list[dict[str, Any]]:
     return posts
 
 
+
+
+def crawl_bing_rss(max_per_feed: int = 15):
+    feeds = [
+        "https://www.bing.com/news/search?q=South+Africa+drug+bust+OR+drugs+seized+OR+drug+lab&cc=ZA&format=rss",
+        "https://www.bing.com/news/search?q=South+Africa+hijacking+OR+hijacked+OR+stolen+vehicle&cc=ZA&format=rss",
+        "https://www.bing.com/news/search?q=South+Africa+cash+in+transit+OR+CIT+heist+OR+robbery&cc=ZA&format=rss",
+        "https://news.google.com/rss/search?q=site:saps.gov.za+(drugs+OR+hijacking+OR+cash-in-transit)+when:7d&hl=en-ZA&gl=ZA&ceid=ZA:en",
+        "https://news.google.com/rss/search?q=(%22News24%22+OR+%22IOL%22+OR+%22TimesLIVE%22+OR+%22SABC%22+OR+%22EWN%22)+(hijacking+OR+%22drug+bust%22+OR+%22cash-in-transit%22)+South+Africa+when:7d&hl=en-ZA&gl=ZA&ceid=ZA:en",
+    ]
+    posts = []
+    seen = set()
+    for url in feeds:
+        try:
+            resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "xml")
+            for item in soup.find_all("item")[:max_per_feed]:
+                title = (item.find("title").get_text(" ", strip=True) if item.find("title") else "").strip()
+                link = (item.find("link").get_text(" ", strip=True) if item.find("link") else "").strip()
+                desc = (item.find("description").get_text(" ", strip=True) if item.find("description") else "").strip()
+                pub = (item.find("pubDate").get_text(" ", strip=True) if item.find("pubDate") else "").strip()
+                if not link or link in seen or not title:
+                    continue
+                hay = f"{title} {desc}".lower()
+                if not any(kw in hay for kw in INCIDENT_KEYWORDS):
+                    continue
+                seen.add(link)
+                posts.append({
+                    "title": title,
+                    "url": link,
+                    "summary": BeautifulSoup(desc, "html.parser").get_text(" ", strip=True),
+                    "published_at": pub,
+                    "source": "Search RSS (Bing/Google)",
+                })
+        except Exception:
+            continue
+    return posts
+
+
 if __name__ == "__main__":
     rss_hits = crawl_google_rss()
     print(f"[OK] Google RSS feeds returned {len(rss_hits)} candidate posts.")
@@ -392,3 +432,5 @@ if __name__ == "__main__":
     print(f"[OK] Direct media outlets returned {len(media_hits)} candidate posts.")
     saps_hits = crawl_saps_statements(max_items=10)
     print(f"[OK] SAPS Media Statements returned {len(saps_hits)} candidate posts.")
+    bing_hits = crawl_bing_rss()
+    print(f"[OK] Search RSS (Bing/Google extra) returned {len(bing_hits)} candidate posts.")

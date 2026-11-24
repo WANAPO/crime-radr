@@ -433,6 +433,25 @@ def generate_map() -> Path:
         </a>
     </div>
     """
+    sa_map.get_root().header.add_child(folium.Element('''    <title>Crime Radr — South Africa OSINT Crime Map</title>
+    <meta name="description" content="Interactive South Africa OSINT map tracking major drug busts, hijackings, and cash-in-transit heists since 6 July 2025." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://wanapo.github.io/crime-radr/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Crime Radr" />
+    <meta property="og:title" content="Crime Radr — South Africa OSINT Crime Map" />
+    <meta property="og:description" content="Interactive South Africa OSINT map tracking major drug busts, hijackings, and CIT heists since 6 July 2025." />
+    <meta property="og:url" content="https://wanapo.github.io/crime-radr/" />
+    <meta property="og:image" content="https://wanapo.github.io/crime-radr/og-card.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@PotwanaNeo" />
+    <meta name="twitter:creator" content="@PotwanaNeo" />
+    <meta name="twitter:title" content="Crime Radr — South Africa OSINT Crime Map" />
+    <meta name="twitter:description" content="Live South Africa OSINT incident tracker: Drug Busts, Hijackings & CIT Heists." />
+    <meta name="twitter:image" content="https://wanapo.github.io/crime-radr/og-card.png" />
+'''))
     sa_map.get_root().html.add_child(folium.Element(ui_html))
 
     OUTPUT_HTML.parent.mkdir(parents=True, exist_ok=True)
