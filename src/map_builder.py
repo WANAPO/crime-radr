@@ -119,13 +119,14 @@ def build_popup_html(incident: dict) -> str:
     img_block = ""
     if gallery:
         img_tags = "".join(
-            f'<img src="{html.escape(url)}" alt="Incident photo" '
-            f'style="width:100%; max-height:135px; object-fit:cover; border-radius:4px; border:1px solid #52525b; margin-bottom:4px;" '
-            f'onerror="this.style.display='none';">'
+            '<img src="' + html.escape(url) + '" alt="Incident photo" '
+            'style="width:100%; max-height:135px; object-fit:cover; border-radius:2px; border:1px solid #3f3f46; margin-bottom:4px;" '
+            'onerror="this.style.display=\'none\';">'
             for url in gallery[:2]
             if url
         )
         if img_tags:
+            img_block = f'<div style="margin:6px 0;">{img_tags}</div>'
             img_block = f'<div style="margin:6px 0;">{img_tags}</div>'
 
     return f"""
