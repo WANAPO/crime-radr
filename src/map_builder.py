@@ -106,46 +106,52 @@ def build_popup_html(incident: dict) -> str:
 
     detail_rows = ""
     for k, v in details.items():
-        label = html.escape(k.replace("_", " ").title())
-        val = html.escape(str(v))
-        detail_rows += f"<div><strong style='color:#ef4444; font-weight:700;'>{label}:</strong> <span style='color:#ffffff; font-weight:600;'>{val}</span></div>"
+        label = html.escape(k.replace("_", " ").upper())
+        val_str = str(v).strip() or "N/A"
+        val = html.escape(val_str)
+        detail_rows += (
+            f"<div style='margin:2px 0;'>"
+            f"<strong style='color:#ef4444; font-weight:800;'>{label}:</strong> "
+            f"<span style='color:#ffffff; font-weight:700;'>{val}</span>"
+            f"</div>"
+        )
 
     img_block = ""
     if gallery:
         img_tags = "".join(
             f'<img src="{html.escape(url)}" alt="Incident photo" '
-            f'style="width:100%; max-height:150px; object-fit:cover; border-radius:4px; border:1px solid #52525b; margin-bottom:4px;">'
-            for url in gallery[:3]
+            f'style="width:100%; max-height:135px; object-fit:cover; border-radius:4px; border:1px solid #52525b; margin-bottom:4px;" '
+            f'onerror="this.style.display='none';">'
+            for url in gallery[:2]
             if url
         )
         if img_tags:
-            img_block = f'<div style="margin:8px 0;">{img_tags}</div>'
+            img_block = f'<div style="margin:6px 0;">{img_tags}</div>'
 
     return f"""
-    <div style="font-family:'Space Grotesk',system-ui,-apple-system,sans-serif; width:275px; color:#ffffff; background:#18181b; border:1px solid #71717a; padding:11px; border-radius:8px;">
-        <span style="display:inline-block; background:{meta['badge_bg']}; color:#ffffff; font-size:11px; font-weight:800; padding:2px 8px; border-radius:999px; text-transform:uppercase; letter-spacing:0.03em;">
+    <div style="font-family:'Space Grotesk',system-ui,-apple-system,sans-serif; width:265px; color:#ffffff; background:#18181b; border:1px solid #71717a; padding:10px; border-radius:8px;">
+        <span style="display:inline-block; background:{meta['badge_bg']}; color:#ffffff; font-size:10px; font-weight:800; padding:2px 8px; border-radius:999px; text-transform:uppercase; letter-spacing:0.04em;">
             {html.escape(meta['label'])}
         </span>
-        <h4 style="margin:8px 0 4px 0; font-size:14px; font-weight:800; color:#ffffff;">
+        <h4 style="margin:6px 0 3px 0; font-size:13px; font-weight:800; color:#ffffff; line-height:1.25;">
             {html.escape(incident['title'])}
         </h4>
-        <div style="font-size:11px; color:#d4d4d8; font-weight:600; margin-bottom:6px;">
-            {html.escape(incident['reported_at'])} &bull; <span style="color:#ef4444; font-weight:700;">{html.escape(incident['location_name'])}</span> ({html.escape(incident.get('province', ''))})
+        <div style="font-size:11px; color:#d4d4d8; font-weight:700; margin-bottom:5px;">
+            {html.escape(incident['reported_at'])} &bull; {html.escape(incident.get('province', 'N/A'))}
         </div>
         {img_block}
-        <p style="font-size:12px; line-height:1.4; color:#f4f4f5; font-weight:500; margin:6px 0;">
-            {html.escape(incident['summary'])}
-        </p>
-        <div style="font-size:12px; background:#27272a; border:1px solid #52525b; padding:7px 9px; border-radius:5px; margin:6px 0; color:#ffffff;">
+        <div style="font-size:11px; background:#27272a; border:1px solid #52525b; padding:6px 8px; border-radius:5px; margin:6px 0; color:#ffffff;">
             {detail_rows}
         </div>
+        <p style="font-size:11px; line-height:1.35; color:#e4e4e7; font-weight:600; margin:5px 0;">
+            {html.escape(incident['summary'])}
+        </p>
         <a href="{html.escape(incident['source_url'])}" target="_blank" rel="noopener noreferrer"
-           style="display:inline-block; margin-top:4px; font-size:12px; color:#ef4444; text-decoration:none; font-weight:800;">
+           style="display:inline-block; margin-top:4px; font-size:11px; color:#ef4444; text-decoration:none; font-weight:800;">
             VIEW SOURCE POST &rarr;
         </a>
     </div>
     """
-
 
 def build_custom_marker_icon(category: str) -> folium.DivIcon:
     meta = CATEGORY_META[category]

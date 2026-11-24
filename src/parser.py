@@ -1,298 +1,162 @@
 import re
-from typing import Any, Optional
-from src.db import MIN_DATE
-from src.geocode import extract_location_from_text, geocode_sa
+from typing import Any
+from src.geocode import geocode_south_africa
 
-CATEGORY_KEYWORDS = {
-    "cit_robbery": [
-        "cash-in-transit",
-        "cash in transit",
-        "cit heist",
-        "cit robbery",
-        "cit attack",
-        "armoured vehicle",
-        "armored vehicle",
-        "armoured cash",
-        "cash van",
-        "money truck",
-        "money van",
-        "bullion van",
-    ],
-    "hijacking": [
-        "hijacking",
-        "hijacked",
-        "carjacking",
-        "bolo",
-        "stolen vehicle",
-        "stolen car",
-        "missing vehicle",
-        "vehicle stolen",
-        "car stolen",
-        "vehicle recovered",
-        "theft of motor vehicle",
-        "motor vehicle theft",
-        "car theft",
-        "chop shop",
-        "vehicle syndicate",
-    ],
-    "drug_bust": [
-        "drug bust",
-        "drugs seized",
-        "drug haul",
-        "drug raid",
-        "drug lab",
-        "drug laboratory",
-        "clandestine lab",
-        "clandestine drug",
-        "drug den",
-        "drug manufacturing",
-        "drug syndicate",
-        "drug trafficking",
-        "narcotics",
-        "street value",
-        "cocaine",
-        "crystal meth",
-        "methamphetamine",
-        "tik",
-        "mandrax",
-        "heroin",
-        "dagga",
-    ],
-}
-
-DRUG_NAMES = (
+DRUG_WORDS = (
+    "drug bust",
+    "drugs seized",
     "cocaine",
-    "crystal meth",
-    "methamphetamine",
-    "tik",
-    "mandrax",
     "heroin",
+    "mandrax",
+    "methamphetamine",
+    "crystal meth",
+    "tik",
     "dagga",
-    "cannabis",
-    "ecstasy",
-    "fentanyl",
+    "narcotics",
+    "drug lab",
+    "drug laboratory",
+    "street value",
 )
 
-MONTH_MAP = {
-    "january": "01", "jan": "01",
-    "february": "02", "feb": "02",
-    "march": "03", "mar": "03",
-    "april": "04", "apr": "04",
-    "may": "05",
-    "june": "06", "jun": "06",
-    "july": "07", "jul": "07",
-    "august": "08", "aug": "08",
-    "september": "09", "sep": "09", "sept": "09",
-    "october": "10", "oct": "10",
-    "november": "11", "nov": "11",
-    "december": "12", "dec": "12",
-}
+HIJACK_WORDS = (
+    "hijack",
+    "hijacked",
+    "bolo",
+    "stolen vehicle",
+    "carjacking",
+)
+
+CIT_WORDS = (
+    "cash-in-transit",
+    "cash in transit",
+    "cit heist",
+    "cit robbery",
+    "armoured",
+    "cash van",
+)
 
 
-def classify_category(text: str) -> Optional[str]:
-    lower = text.lower()
-    # Priority: CIT/Money truck -> Hijacking/Stolen Vehicle -> Drug Bust/Lab/Den
-    for category in ("cit_robbery", "hijacking", "drug_bust"):
-        for kw in CATEGORY_KEYWORDS[category]:
-            if re.search(rf"\b{re.escape(kw)}\b", lower):
-                return category
+def _classify_category(text_lower: str) -> str | None:
+    if any(w in text_lower for w in CIT_WORDS):
+        return "cit_robbery"
+    if any(w in text_lower for w in HIJACK_WORDS):
+        return "hijacking"
+    if any(w in text_lower for w in DRUG_WORDS):
+        return "drug_bust"
     return None
 
 
-def extract_incident_date(text: str, fallback_date: str) -> str:
-    """Extract explicit 'stolen/hijacked on <Date>' or YYYY-MM-DD from text, falling back to post date."""
-    iso_match = re.search(r"\b(202[5-9]-\d{2}-\d{2})\b", text)
-    if iso_match and iso_match.group(1) >= MIN_DATE:
-        return iso_match.group(1)
-
-    dmy_match = re.search(
-        r"\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December|"
-        r"Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+(202[5-9])\b",
+def _extract_suspects(text: str) -> str:
+    m = re.search(
+        r"\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|\bseveral\b|\bmultiple\b)\s+suspects?\b",
         text,
-        re.IGNORECASE,
+        re.I,
     )
-    if dmy_match:
-        day = dmy_match.group(1).zfill(2)
-        month = MONTH_MAP[dmy_match.group(2).lower()]
-        year = dmy_match.group(3)
-        candidate = f"{year}-{month}-{day}"
-        if candidate >= MIN_DATE:
-            return candidate
-
-    return fallback_date
+    if m:
+        return m.group(0).strip()
+    if re.search(r"\bsuspects?\s+(arrested|sought|fled|wanted)\b", text, re.I):
+        return "Suspect(s) mentioned"
+    return "N/A"
 
 
-def extract_video_url(text: str, source_url: str, raw_video_url: Optional[str] = None) -> Optional[str]:
-    if raw_video_url:
-        return raw_video_url
-
-    yt_match = re.search(r"(https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[^\s\"'<>]+)", text)
-    if yt_match:
-        return yt_match.group(1)
-
-    if any(tag in text.lower() for tag in ("watch:", "video:", "footage", "caught on camera", "dashcam", "cctv")):
-        return source_url
-
-    return None
-
-
-def extract_drug_details(text: str) -> dict[str, Any]:
-    details: dict[str, Any] = {}
-    lower = text.lower()
-
-    if any(k in lower for k in ("drug lab", "drug laboratory", "clandestine lab", "clandestine drug", "drug manufacturing")):
-        details["site_type"] = "Clandestine Drug Lab"
-    elif "drug den" in lower:
-        details["site_type"] = "Drug Den"
-    elif "syndicate" in lower:
-        details["site_type"] = "Drug Syndicate"
-
-    val_match = re.search(
-        r"(R\s?\d[\d\s,\.]*(?:\s?(?:million|billion|thousand|m|k))?)",
+def _extract_value(text: str) -> str:
+    m = re.search(
+        r"(?:R\s?\d[\d\s,.]*(?:\s?(?:million|billion|thousand|m|bn|k))?|\d[\d\s,.]*\s?(?:million|billion)\s*(?:rand|rands)?)",
         text,
-        re.IGNORECASE,
+        re.I,
     )
-    if val_match:
-        details["street_value"] = re.sub(r"\s+", " ", val_match.group(1)).strip()
-
-    sus_match = re.search(
-        r"\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+suspects?\b",
-        text,
-        re.IGNORECASE,
-    )
-    if sus_match:
-        details["suspects"] = sus_match.group(1)
-
-    found_drugs = [d.title() for d in DRUG_NAMES if re.search(rf"\b{re.escape(d)}\b", text, re.IGNORECASE)]
-    if found_drugs:
-        details["drug_type"] = ", ".join(dict.fromkeys(found_drugs))
-
-    return details
+    return m.group(0).strip() if m else "N/A"
 
 
-def extract_hijacking_details(text: str, incident_date: str, location_name: str) -> dict[str, Any]:
-    details: dict[str, Any] = {
-        "date_stolen_or_hijacked": incident_date,
-        "last_seen_location": location_name,
-    }
-    lower = text.lower()
-
-    if "recovered" in lower:
-        details["status"] = "Recovered"
-    elif "bolo" in lower:
-        details["status"] = "Active BOLO"
-    elif "hijack" in lower or "carjack" in lower:
-        details["status"] = "Hijacked"
-    else:
-        details["status"] = "Stolen / Missing Vehicle"
-
-    plate_match = re.search(
-        r"\b([A-Z]{2,3}\s?\d{2,3}[\s\-]?[A-Z0-9]{2,4}(?:\s?(?:GP|ZN|EC|WC|MP|LP|NW|FS|NC))?)\b",
-        text,
-    )
-    if plate_match:
-        details["registration"] = plate_match.group(1).strip()
-
-    veh_match = re.search(
-        r"\b((?:white|black|silver|grey|gray|blue|red|gold|maroon|green|brown)\s+"
-        r"(?:vw|volkswagen|toyota|ford|bmw|audi|mercedes|hyundai|kia|nissan|isuzu|mazda|suzuki|renault|haval|chery|"
-        r"polo|hilux|fortuner|ranger|corolla|etios|yaris|amarok|navara|np200)[a-zA-Z0-9\s\-]{0,22})",
-        text,
-        re.IGNORECASE,
-    )
-    if veh_match:
-        details["vehicle"] = veh_match.group(1).strip()
-
-    return details
+def _extract_vehicle_or_case_numbers(text: str) -> str:
+    # South African plate patterns like ABC 123 GP / CA 123-456 / ND 45678
+    plate = re.search(r"\b[A-Z]{2,3}\s?\d{2,4}(?:-\d{2,4})?\s?(?:GP|ZN|KZN|EC|WC|FS|LP|MP|NW|NC)?\b", text)
+    if plate:
+        return plate.group(0).strip()
+    case_no = re.search(r"\b(?:CAS|BOLO|CR)\s*#?\s*\d{2,8}/\d{1,4}/\d{4}\b", text, re.I)
+    if case_no:
+        return case_no.group(0).strip()
+    return "N/A"
 
 
-def extract_cit_details(text: str) -> dict[str, Any]:
-    details: dict[str, Any] = {}
-    lower = text.lower()
-
-    if "explosive" in lower or "bombed" in lower:
-        details["method"] = "Explosives / Bombing"
-    elif "rammed" in lower:
-        details["method"] = "Vehicle Ramming"
-    elif "shootout" in lower or "gunfire" in lower:
-        details["method"] = "Armed Ambush / Shootout"
-
-    sus_match = re.search(r"\b(\d+|several|multiple)\s+(?:armed\s+)?suspects?\b", lower)
-    if sus_match:
-        details["suspects"] = f"{sus_match.group(1)} suspects"
-
-    return details
+def _extract_contact(text: str) -> str:
+    # Match SA phone/tip-off numbers like 08600 10111, 082 555 1234, 011-123-4567
+    phone = re.search(r"\b0\d{2}[\s\-]?\d{3}[\s\-]?\d{4}\b|\b08600\s?10111\b", text)
+    if phone:
+        return phone.group(0).strip()
+    if "crime stop" in text.lower():
+        return "08600 10111 (Crime Stop)"
+    return "N/A"
 
 
-def parse_post(raw_post: dict[str, Any]) -> Optional[dict[str, Any]]:
-    fallback_date = raw_post.get("reported_at", "")[:10]
-    if not fallback_date or fallback_date < MIN_DATE:
-        return None
+def _short_title(text: str) -> str:
+    first_part = text.split(". ", 1)[0].strip()
+    first_part = re.sub(r"\s*[-–|]\s*(SABC News|News24|TimesLIVE|IOL|Citizen|EWN)$", "", first_part, flags=re.I)
+    return first_part[:95].strip()
 
-    text = raw_post.get("text", "").strip()
+
+def _short_summary(text: str, title: str) -> str:
+    rem = text[len(title) :].lstrip(". ").strip() if text.startswith(title) else text
+    rem = re.sub(r"\s+", " ", rem).strip()
+    return (rem[:160].strip() if rem else title[:160].strip())
+
+
+def parse_post(post: dict[str, Any]) -> dict[str, Any] | None:
+    text = (post.get("text") or "").strip()
     if not text:
         return None
 
-    category = classify_category(text)
+    category = _classify_category(text.lower())
     if not category:
         return None
 
-    location_name = raw_post.get("location_hint") or extract_location_from_text(text)
-    if not location_name:
+    geo = geocode_south_africa(text)
+    if not geo:
         return None
 
-    coords = geocode_sa(location_name)
-    if not coords:
-        return None
+    title = _short_title(text)
+    summary = _short_summary(text, title)
 
-    lat, lon, province = coords
-    incident_date = extract_incident_date(text, fallback_date)
-    source_url = raw_post["source_url"]
+    gallery: list[str] = []
+    if isinstance(post.get("gallery"), list):
+        gallery.extend([u for u in post["gallery"] if u])
+    if post.get("image_url") and post["image_url"] not in gallery:
+        gallery.insert(0, post["image_url"])
 
     if category == "drug_bust":
-        details = extract_drug_details(text)
+        details = {
+            "location": geo["location_name"],
+            "suspects": _extract_suspects(text),
+            "value": _extract_value(text),
+        }
     elif category == "hijacking":
-        details = extract_hijacking_details(text, incident_date, location_name)
-    else:
-        details = extract_cit_details(text)
+        details = {
+            "numbers": _extract_vehicle_or_case_numbers(text),
+            "location": geo["location_name"],
+            "contact": _extract_contact(text),
+        }
+    else:  # cit_robbery
+        details = {
+            "location": geo["location_name"],
+            "suspects": _extract_suspects(text),
+            "value": _extract_value(text),
+            "contact": _extract_contact(text),
+        }
 
-    # Preserve gallery of images & video URL inside details JSON
-    gallery: list[str] = list(dict.fromkeys(raw_post.get("gallery") or []))
-    primary_img = raw_post.get("image_url") or (gallery[0] if gallery else None)
-    if primary_img and primary_img not in gallery:
-        gallery.insert(0, primary_img)
     if gallery:
-        details["gallery"] = gallery[:6]
-
-    video_url = extract_video_url(text, source_url, raw_post.get("video_url"))
-    if video_url:
-        details["video_url"] = video_url
-
-    first_line = text.splitlines()[0][:95]
-    title = first_line if len(first_line) > 15 else f"{category.replace('_', ' ').title()} - {location_name}"
+        details["gallery"] = gallery[:3]
 
     return {
-        "source_id": str(raw_post["source_id"]),
+        "source_id": post["source_id"],
         "category": category,
-        "reported_at": incident_date,
-        "province": province,
-        "location_name": location_name,
-        "latitude": lat,
-        "longitude": lon,
         "title": title,
-        "summary": text[:450],
-        "image_url": primary_img,
-        "source_url": source_url,
+        "summary": summary,
+        "location_name": geo["location_name"],
+        "province": geo["province"],
+        "latitude": geo["latitude"],
+        "longitude": geo["longitude"],
+        "reported_at": post["reported_at"],
+        "source_url": post["source_url"],
+        "image_url": gallery[0] if gallery else None,
         "details": details,
     }
-
-
-if __name__ == "__main__":
-    sample = {
-        "source_id": "test_lab_01",
-        "reported_at": "2026-11-20",
-        "text": "SAPS dismantled a clandestine drug lab in Kranskop worth R100 million seizing Mandrax tablets. 1 suspect arrested.",
-        "source_url": "https://www.saps.gov.za",
-        "gallery": ["https://example.com/lab1.jpg", "https://example.com/lab2.jpg"],
-    }
-    print(parse_post(sample))
