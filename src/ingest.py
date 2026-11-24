@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import Any
 import requests
-from src.crawlers import crawl_google_rss, crawl_saps_statements
+from src.crawlers import crawl_google_rss, crawl_media_outlets, crawl_saps_statements
 from src.db import MIN_DATE, init_db, upsert_incident
 from src.parser import parse_post
 
@@ -80,8 +80,9 @@ def run_ingestion() -> int:
         except Exception as exc:
             print(f"[WARN] X API fetch failed: {exc}")
 
-    # Multi-source crawlers: Google RSS (X headers + SA news) & SAPS Statements
+    # Multi-source crawlers: Google RSS, SABC/ECR/North Coast Courier/Phoenix Tabloid/Pretoria News/IOL/SA newspapers, & SAPS
     raw_posts.extend(crawl_google_rss())
+    raw_posts.extend(crawl_media_outlets(max_per_page=8))
     raw_posts.extend(crawl_saps_statements(max_items=25))
     raw_posts.extend(fetch_from_local_feed())
 
