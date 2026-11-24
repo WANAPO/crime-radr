@@ -1,6 +1,6 @@
 import re
 from typing import Any
-from src.geocode import extract_location_from_text, geocode_sa
+from src.geocode import geocode_with_precision
 
 DRUG_WORDS = (
     "drug bust",
@@ -46,25 +46,39 @@ def _classify_category(text_lower: str) -> str | None:
     return None
 
 
-def _resolve_geo(text: str) -> dict[str, Any] | None:
-    place = extract_location_from_text(text)
-    if not place:
-        return None
-    coords = geocode_sa(place)
-    if not coords:
-        return None
-    lat, lon, province = coords
-    return {
-        "location_name": place,
-        "province": province or "South Africa",
-        "latitude": float(lat),
-        "longitude": float(lon),
-    }
+def _detect_source_outlet(source_id: str, url: str, text: str) -> str:
+    sid = (source_id or "").lower()
+    low = f"{url} {text}".lower()
+    if sid.startswith("saps") or "saps.gov.za" in low:
+        return "SAPS"
+    if sid.startswith("arrive_alive") or sid.startswith("aa_") or "arrivealive.co.za" in low:
+        return "Arrive Alive"
+    if sid.startswith("sabc_news") or "sabcnews.com" in low or "sabc news" in low:
+        return "SABC News"
+    if sid.startswith("ecr_news_traffic") or "ecr.co.za" in low:
+        return "ECR News & Traffic"
+    if sid.startswith("north_coast_courier") or "northcoastcourier.co.za" in low:
+        return "North Coast Courier"
+    if sid.startswith("phoenix_tabloid") or "phoenixtabloid.co.za" in low:
+        return "Phoenix Tabloid"
+    if sid.startswith("pretoria_news") or "pretoria news" in low:
+        return "Pretoria News"
+    if sid.startswith("iol_news") or "iol.co.za" in low:
+        return "IOL"
+    if sid.startswith("x_") or sid.startswith("x_social") or "x.com" in low or "twitter.com" in low:
+        return "X / Social"
+    if "news24" in low:
+        return "News24"
+    if "timeslive" in low:
+        return "TimesLIVE"
+    if "citizen.co.za" in low:
+        return "The Citizen"
+    return "SA Press"
 
 
 def _extract_suspects(text: str) -> str:
     m = re.search(
-        r"\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|\bseveral\b|\bmultiple\b)\s+suspects?\b",
+        r"\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|several|multiple)\s+suspects?\b",
         text,
         re.I,
     )
@@ -106,21 +120,31 @@ def _extract_contact(text: str) -> str:
     return "N/A"
 
 
-def _short_title(text: str) -> str:
-    first_part = text.split(". ", 1)[0].strip()
-    first_part = re.sub(
-        r"\s*[-–|]\s*(SABC News|News24|TimesLIVE|IOL|Citizen|EWN)$",
-        "",
-        first_part,
-        flags=re.I,
-    )
-    return first_part[:95].strip()
+def _deduplicate_sentences(raw_text: str) -> tuple[str, str]:
+    cleaned = re.sub(r"\s+", " ", raw_text).strip()
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", cleaned) if p.strip()]
+    unique_parts: list[str] = []
+    seen_norm: set[str] = set()
 
+    for part in parts:
+        norm = re.sub(r"\s*[-–|]\s*(SABC News|News24|TimesLIVE|IOL|Citizen|EWN).*$", "", part, flags=re.I)
+        norm = re.sub(r"[^a-z0-9]+", " ", norm.lower()).strip()
+        if not norm or norm in seen_norm:
+            continue
+        # Skip if this segment is a near-duplicate substring of an already kept segment
+        if any(norm in prev or prev in norm for prev in seen_norm):
+            continue
+        seen_norm.add(norm)
+        unique_parts.append(part)
 
-def _short_summary(text: str, title: str) -> str:
-    rem = text[len(title) :].lstrip(". ").strip() if text.startswith(title) else text
-    rem = re.sub(r"\s+", " ", rem).strip()
-    return rem[:160].strip() if rem else title[:160].strip()
+    if not unique_parts:
+        title = cleaned[:95].strip()
+        return title, title[:150].strip()
+
+    title = re.sub(r"\s*[-–|]\s*(SABC News|News24|TimesLIVE|IOL|Citizen|EWN)$", "", unique_parts[0], flags=re.I)
+    title = title[:95].strip()
+    summary = " ".join(unique_parts[1:])[:155].strip() if len(unique_parts) > 1 else ""
+    return title, summary
 
 
 def parse_post(post: dict[str, Any]) -> dict[str, Any] | None:
@@ -132,12 +156,12 @@ def parse_post(post: dict[str, Any]) -> dict[str, Any] | None:
     if not category:
         return None
 
-    geo = _resolve_geo(text)
+    geo = geocode_with_precision(text)
     if not geo:
         return None
 
-    title = _short_title(text)
-    summary = _short_summary(text, title)
+    title, summary = _deduplicate_sentences(text)
+    source_outlet = _detect_source_outlet(post.get("source_id", ""), post.get("source_url", ""), text)
 
     gallery: list[str] = []
     if isinstance(post.get("gallery"), list):
@@ -146,7 +170,7 @@ def parse_post(post: dict[str, Any]) -> dict[str, Any] | None:
         gallery.insert(0, post["image_url"])
 
     if category == "drug_bust":
-        details = {
+        details: dict[str, Any] = {
             "location": geo["location_name"],
             "suspects": _extract_suspects(text),
             "value": _extract_value(text),
@@ -157,7 +181,7 @@ def parse_post(post: dict[str, Any]) -> dict[str, Any] | None:
             "location": geo["location_name"],
             "contact": _extract_contact(text),
         }
-    else:  # cit_robbery
+    else:
         details = {
             "location": geo["location_name"],
             "suspects": _extract_suspects(text),
@@ -165,6 +189,8 @@ def parse_post(post: dict[str, Any]) -> dict[str, Any] | None:
             "contact": _extract_contact(text),
         }
 
+    details["source"] = source_outlet
+    details["precision"] = geo["precision"]
     if gallery:
         details["gallery"] = gallery[:3]
 

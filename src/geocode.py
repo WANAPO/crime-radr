@@ -125,3 +125,64 @@ def geocode_sa(place_name: str) -> Optional[tuple[float, float, str]]:
 if __name__ == "__main__":
     print("Durban ->", geocode_sa("Durban"))
     print("Verulam ->", geocode_sa("Verulam"))
+
+
+PROVINCE_CENTERS = {
+    "Gauteng": (-26.2708, 28.1123),
+    "KwaZulu-Natal": (-28.5306, 30.8958),
+    "Western Cape": (-33.2278, 21.8569),
+    "Eastern Cape": (-32.2968, 26.4194),
+    "Free State": (-28.4541, 26.7968),
+    "Limpopo": (-23.4013, 29.4179),
+    "Mpumalanga": (-25.5653, 30.5279),
+    "North West": (-26.6639, 25.2838),
+    "Northern Cape": (-29.0467, 21.8569),
+}
+
+
+def geocode_with_precision(text: str) -> dict | None:
+    """Resolve South African location, province, coordinates, and spatial precision tier."""
+    place = extract_location_from_text(text)
+    if place:
+        coords = geocode_sa(place)
+        if coords:
+            lat, lon, province = coords
+            low_place = place.lower()
+            if any(h in low_place for h in ("n1", "n2", "n3", "n4", "m4", "r59", "r21", "highway", "freeway", "pass")):
+                precision = "Corridor / Route"
+            elif low_place in {p.lower() for p in PROVINCE_CENTERS}:
+                precision = "Province Center"
+            else:
+                precision = "Town / Suburb"
+            return {
+                "location_name": place,
+                "province": province or "South Africa",
+                "latitude": float(lat),
+                "longitude": float(lon),
+                "precision": precision,
+            }
+
+    low_text = text.lower()
+    prov_aliases = {
+        "kwazulu-natal": "KwaZulu-Natal",
+        "kzn": "KwaZulu-Natal",
+        "gauteng": "Gauteng",
+        "western cape": "Western Cape",
+        "eastern cape": "Eastern Cape",
+        "free state": "Free State",
+        "limpopo": "Limpopo",
+        "mpumalanga": "Mpumalanga",
+        "north west": "North West",
+        "northern cape": "Northern Cape",
+    }
+    for alias, prov in prov_aliases.items():
+        if re.search(rf"\b{re.escape(alias)}\b", low_text):
+            lat, lon = PROVINCE_CENTERS[prov]
+            return {
+                "location_name": prov,
+                "province": prov,
+                "latitude": lat,
+                "longitude": lon,
+                "precision": "Province Fallback",
+            }
+    return None
